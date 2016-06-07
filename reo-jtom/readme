@@ -1,0 +1,14 @@
+Structure: 
+
+* readme (this file)
+* examples |
+   	   |-> reospec (contains the source code, *.t and *.gom files)	
+           |-> build
+	             |-> reospec (contains the generated *.class files; they are compiled using tom-2.8rc2)
+
+- Copy the dir examples to the dir examples which comes with the JTom distribution (s.t. the dir "reospec" is in dir "<tom>/examples" and "build/reospec" is in dir "<tom>/examples/build"). 
+
+- To run the application (which is in TestExample.t), from the dir build run the command "java reospec.TestExample".  
+
+- To (re)compile, from the dir examples/reospec (where the source code is), run the command "ant".   
+

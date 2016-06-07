@@ -1,0 +1,90 @@
+module Connector
+imports Stream 
+
+abstract syntax
+
+//NodeType = source() | sink() | hidden()
+//Node = node(t:NodeType, name:String, s:StreamId)
+
+Node = node(name:String, s:StreamId) | source(n:Node) | sink(n:Node)
+
+Nodes = nodes(Node*)
+
+//Source = source(n:Node)
+//Ins = ins(Source*)
+
+Ins = ins(Node*)
+
+//Sink = sink(n:Node)
+//Outs = outs(Sink*)
+			
+Outs = outs(Node*)
+
+Config = R(ins:Ins, outs:Outs)
+
+ChannelType = sync() | fifo() | syncDrain() | lossySync() | syncSpout()
+
+Pre = pre(p:Pred)
+
+Post = post(p:Pred)
+
+CSpec = spec(p:Pre, q:Post)
+		// for basic channels infer the spec from the channel type 
+		| getSpecBC(c:Connector)
+		| constraint(t:ChannelType, s1:StreamId, s2:StreamId)
+		//| syncSpec(csync:SyncChannel)
+		//| fifoSpec(cfifo:FifoChannel)		
+		
+Connector = channel(ct:ChannelType, n1:Node, n2:Node)
+			// | sync(n:Source, m:Sink)
+			// | fifo(n:Source, m:Sink)
+			| connector(cf:Config, cs:CSpec)
+			| seq(c1:Connector, c2:Connector)
+			| merge(c1:Connector, c2:Connector)
+			| rep(c1:Connector, c2:Connector)
+			| dummy()
+
+//ConnectorList = connectorList(Connector*)
+ConnectorList = connectorList(Connector*) 
+				| connectorTree(ConnectorList*)
+
+getSpecBC:make(c) {
+	%match {
+		channel(t, (source|sink)(node(_, sa)), (source|sink)(node(_, sb))) << c -> { 
+			return `constraint(t, sa, sb); }
+	}
+}
+
+/*				
+module Connector:rules() {
+	eq(comp(da, ta), comp(db, tb)) -> and(eqD(da, db), eqT(ta, tb)) 
+	constraint(sync(), sa, sb) -> spec(pre(D(sa)), post(and(D(sb), eq(sa, sb))))	
+	channel(t, source(n1@node(_, sa)), sink(n2@node(_, sb))) -> connector(R(ins(n1), outs(n2)), constraint(t, sa, sb))	
+	channel(t, source(n1@node(_, sa)), source(n2@node(_, sb))) -> connector(R(ins(n1, n2), outs()), constraint(t, sa, sb))
+}*/
+				
+ /*  
+getSpec:make(c) {
+	%match {
+		sync(source(node(_, sa)), sink(node(_, sb))) << c -> {			
+			return `spec(pre(D(sa)), post(and(D(sb), eq(sa, sb)))); }
+		
+		fifo(source(node(_, sa)), sink(node(_, sb))) << c && comp(da, ta) << sa && comp(db, tb) << sb -> {			
+			return `spec(pre(D(sa)), post(and(and(D(sb), eqD(da, db)), constraintFifo(ta, tb)))); }
+	}
+} */
+
+seq:make(c1, c2) {
+	%match {
+	connector(cf1, cs1) << c1 && connector(cf2, cs2) << c2
+	&& ( spec(pre(p1), post(q1)) << cs1 && spec(pre(p2), post(q2)) << cs2 )
+	&& ( (R(ins(i), outs(o1*, node(name, s1), o2*)) << cf1) ) 
+	&& ( (R(ins(i1*, node(name, s2), i2*), outs(o)) << cf2) )
+		-> {
+		System.out.println("seq");
+		return `connector(R(ins(i, i1*, i2*), outs(o, o1*, o2*)), spec(pre(and(p1, neg(exists(q1, neg(p2))))), post(exists(q1, q2)))); } 		
+	}
+}
+
+
+			

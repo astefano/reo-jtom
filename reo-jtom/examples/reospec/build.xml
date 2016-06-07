@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="Build the Reo Spec example" default="build" basedir="..">
+  <import file="../common.xml"/>
+  <property name="example" value="reospec"/>
+  <target name="build" depends="init">
+  	<gomfreshcompile/>
+  	<tom.preset srcdir="${examples.dir}"
+  	                destdir="${examples.gen}">
+  	      <include name="${example}/**/*.t"/>
+  	      <exclude name="${example}/**/Connector.t"/>
+  	    </tom.preset>
+    <javacompile/>
+  </target>
+  <property name="distribute" value="yes"/>
+</project>

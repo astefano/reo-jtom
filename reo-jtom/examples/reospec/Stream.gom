@@ -1,0 +1,97 @@
+module Stream
+imports int String 
+
+abstract syntax
+
+atom SVar 
+
+DataId = dId(s:String) 
+
+DataSeq = data(String*)
+		| da() | db() | dc() 
+		//| generateD(s:String) 
+		
+TimeId = tId(s:String)
+
+TimeSeq = time(int*) 
+		| ta() | tb() | tc()	
+		//| generateT(s:String)
+
+StreamId = sId(s:String) 
+			| comp(dId:DataId, tId:TimeId)
+			| contract(sId:StreamId)
+			//| generateS(s:String)
+
+Stream = stream(d:DataSeq, t:TimeSeq)
+		| Var(sv:SVar)
+
+/*		
+generateS:make(s) {
+	String s1 = new String("s" + s); 	
+	return `sId(s1);
+}
+
+generateD:make(s) {
+	String s1 = new String("d" + s); 	
+	return `dId(s1);
+}
+
+generateT:make(s) {
+	String s1 = new String("t" + s); 	
+	return `tId(s1);
+} */
+
+contract:make(sId) {
+	%match {
+		comp(dId(concString(_,x*)), tId(concString(_,x*))) << sId -> { 
+					String s1 = new String("s" + `x*); 
+					System.out.println("s1 = " + `x*); 
+					return `sId(s1); }
+	}
+}
+	
+Pred = True()
+		| False()
+		| D(sId:StreamId)
+		| and(p1:Pred, p2:Pred)
+		| or(p1:Pred, p2:Pred)
+		| neg(p:Pred)
+		| exists(p:Pred, q:Pred)
+	//	| constraintSync(sId1:StreamId, sId2:StreamId)
+	//	| constraintFifo(tId1:TimeId, tId2:TimeId)
+		| eqD(dId1:DataId, dId2:DataId)
+		| eqT(tId1:TimeId, tId2:TimeId)
+		| between(tId1:TimeId, tId2:TimeId)		
+		| eq(sId1:StreamId, sId2:StreamId)
+		| merged(sId1:StreamId, sId2:StreamId, sId:StreamId)
+		| ok() | sa() | sb() | sc()
+		| andL(Pred*)
+		| eqL(String*)
+		| implic(p1:Pred, p2:Pred)
+		| L(s1:StreamId, s2:StreamId)
+		| valS(s:String)
+	//	| eqDEval(d1:DataSeq, d2:DataSeq)
+	//	| eqTEval(t1:TimeSeq, t2:TimeSeq)
+	//	| eqEval(s1:Stream, s2:Stream)
+	//	| constraintFifoEval(t1:TimeSeq, t2:TimeSeq)
+	//	| constraintLossyEval(t1:TimeSeq, t2:TimeSeq)
+		
+/*		
+constraintFifoEval:make(t1, t2){
+	%match(TimeSeq t1, TimeSeq t2) {
+		time(x), time(y) && x < y -> { return `ok() ;}
+		time(x1, xl*, x2), time(y, yl*) && x1 < y && y < x2 -> { return `constraintFifoEval(time(xl*), time(yl*)) ;}
+	}
+} */
+ 
+
+module Stream:rules() {
+	and(p, True()) -> p
+	and(False(),_) -> False()
+	or(True(),_) -> True()
+//comp(dId(concString(_,x*)), tId(concString(_,x*))) -> generateS(x*) 
+}
+
+ 
+
+		

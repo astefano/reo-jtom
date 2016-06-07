@@ -1,0 +1,710 @@
+package reospec;
+
+import reospec.stream.types.*;
+import reospec.connector.types.*;
+import tom.library.sl.VisitFailure;
+
+import java.lang.reflect.Array;
+import java.util.*;
+import java.util.*;
+
+public class TestConnector{
+//%include{stream/Stream.tom}
+%include { sl.tom }
+%include{connector/Connector.tom}
+%include {util/ArrayList.tom}
+
+static private boolean debugFlagGen, debugFlagStratSimp, debugFlagStratSimpImpl, debugFlagStratSeq, debugFlagStratRep, debugFlagStratMerge, debugFlagStratFlatten;
+
+public static void initDebugFlags(){
+	debugFlagGen = false;
+	debugFlagStratSimp = false;
+	debugFlagStratSimpImpl = false;
+	debugFlagStratSeq = true; //false;
+	debugFlagStratRep = false; 
+	debugFlagStratMerge = false; 
+	debugFlagStratFlatten = false;
+}
+
+public static Pred isRefinement(Connector c1, Connector c2) {
+	Pred p1 = getPre(getSpec(c1));
+	Pred q1 = getPost(getSpec(c1));
+	Pred p2 = getPre(getSpec(c2));
+	Pred q2 = getPost(getSpec(c2));
+	System.out.println("isRefinement: pretty(p1 and q2 => q1) = " + pretty(`implic(andL(p1, q2), q1)));
+	try{
+	Pred res1 = `Repeat(SimpImplication()).visitLight(`implic(p1, p2));
+	Pred res2 = `Repeat(SimpImplication()).visitLight(`implic(andL(p1, q2), q1));
+	//System.out.println("res2 = " + res2 + " pretty(res2) = " + pretty(res2));
+
+	return `andL(res1, res2);
+
+	} catch(VisitFailure e) { System.out.println("Refinement: strategy failed"); }
+
+return null;
+}
+
+// later change this s.t. it returns a test case (that means that i also need to add in gom... the syntax ...)
+// for the moment i only print inside the function the results 
+public static void generateTestCases(Connector c1, Connector c2) {
+	Pred resRef = isRefinement(c1, c2);
+	if (resRef != null) {
+		try{
+			Pred resRefSimp = `Repeat(SimpResRef()).visitLight(getAndL(resRef));
+			System.out.println("generateTestCases: pretty(resRef) after simp is: \n " + pretty(resRefSimp));
+			Pred resRefUnfold = unfoldResRef(resRefSimp, 0);
+			System.out.println("generateTestCases: pretty(resRefUnfold) after simp is: " + pretty(resRefUnfold));
+			} catch(VisitFailure e) { System.out.println("generateTestCases: strategy failed"); }
+	} else System.out.println("generateTestCases: resRef is null!!");	
+}
+
+//%strategy SymbolicUnfoldPred(int i) extends Fail(){ 
+//  	visit Pred {
+public static String symbolicUnfoldPred(Pred p, int i){
+%match (p) {
+  	   merged(comp(dId(da), tId(x)), comp(dId(db), tId(y)), c) -> { 
+  	   //we know that y < between(y) < tail(y) so for an even index i dc[i] is da[i] and for an odd index i dc[i] is db[i]
+  	   if(`x.equals("between2(" + `y + ")")) {
+  		   String sc = stream2String(getFold(`c)) + "[" + i + "]";
+  		   String tc = `y + "[" + i + "]";
+  		   String dc = "";  	   
+  		   if (i % 2 == 0) dc = `db + "[" + i + "]"; else dc = `da + "[" + i + "]";
+  		   String scV = sc + " = (" + tc + " : " + dc + ")";  		   	  	     	     	    
+  		   	return scV; }   	   
+	}
+  	   merged(comp(dId(da), tId(x)), comp(dId(db), tId(y)), c) -> { 
+  	   //we know that between(x) < tail(x) so for an even index i dc[i] is db[i] and for an odd index i dc[i] is da[i]
+  	   if(`y.equals("between2(" + `x + ")")) {
+  		   String sc = stream2String(getFold(`c)) + "[" + i + "]";
+  		   String tc = `x + "[" + i + "]";
+  		   String dc = "";  	   
+  		   if (i % 2 == 0) dc = `da + "[" + i + "]"; else dc = `db + "[" + i + "]";
+  		   String scV = sc + " = (" + tc + " : " + dc + ")";  		   	  	     	     	    
+  		   	return scV; }   	   
+	} 
+	}
+	return "dontknow";
+}
+
+public static Pred unfoldResRef(Pred p, int i){ 
+%match (p){
+  	  implic(p1, p2) -> {
+  		  String cv1 = symbolicUnfoldPred(`p1, i);
+  		  String cv2 = symbolicUnfoldPred(`p2, i);
+  		  String[] cv1Parts, cv2Parts;
+  		  String delimiter = ":";
+  		  cv1Parts = cv1.split(delimiter);
+  		  cv2Parts = cv2.split(delimiter);
+  		  if(cv1Parts != null && cv2Parts != null && cv1Parts.length > 1 && cv2Parts.length > 1) {
+  			  //System.out.println("unfoldResRef: cv1Parts[0] = " + cv1Parts[0] + "\n");
+  			  if(cv1Parts[0].equals(cv2Parts[0]) && !cv1Parts[1].equals(cv2Parts[1])) {  
+  				  System.out.println("unfoldResRef: Counterexample: " + cv1 + " and " + cv2 + "\n"); 
+  				  return `False(); } } 
+  		  else { System.out.println("cv1Parts or cv2Parts is null or they have length < 1!!! Error."); }  		    		  
+  	  } } 
+  	return p;
+}
+
+public static Map<String, ArrayList> addBetween(Map<String, ArrayList> env) {
+	Map<String, ArrayList> env1 = new HashMap<String, ArrayList>();
+	Random randomGenerator = new Random();
+	Integer b1, b2;
+	String tempTimeName; 
+	
+	Set set = env.entrySet();
+    Iterator it = set.iterator();
+
+    while(it.hasNext()){
+      Map.Entry me = (Map.Entry)it.next();
+      env1.put((String)me.getKey(), (ArrayList)me.getValue());
+      //System.out.println("addBetween: " + me.getKey() + " : " + me.getValue() );
+      String taName = (String)me.getKey();      
+      if (taName.charAt(0) == 't') {
+    	  tempTimeName = "between2(" + taName + ")";
+    	  ArrayList<Integer> taVal = (ArrayList<Integer>)me.getValue();
+    	  ArrayList<Integer> tempTimeValue = new ArrayList<Integer>();  
+      	  for (int i = 0; i < taVal.size()-1; i++) {
+      		  b1 = taVal.get(i);
+      		  b2 = taVal.get(i+1);
+      		  if(b2 > b1) 
+      		  // show error if b2 < b1 (not valid time seq) or just let it to wellFormedTimeSeq??? 
+      		  // and here only take care to populate between only if b2 > b1  
+      		  tempTimeValue.add(b1 + 1 + randomGenerator.nextInt(b2 - b1));
+      	  }
+      	  tempTimeValue.add(taVal.get(taVal.size()-1)+1);
+      	  //System.out.println("addBetween: tempTimeValue " +  tempTimeValue.get(0));
+      	  env1.put(tempTimeName, tempTimeValue);      	  
+      } //if  	  
+	} // while
+	return env1;
+}
+
+public static boolean wellFormedTimeSeq(ArrayList<Integer> t) {
+	for(int i = 0; i < t.size()-1; i++) { 
+		if (t.get(i) > t.get(i+1)) return false;
+		}
+return true;
+}
+
+public static Pred formInstStream(ArrayList<String> dVals, ArrayList<Integer> tVals) {
+	String stream = "";
+	Iterator it1 = tVals.iterator();
+	Iterator it2 = dVals.iterator();
+	while(it1.hasNext() && it2.hasNext()) {				
+		stream = stream + "(" + it1.next() + " : " + it2.next().toString() + "), "; 
+	}
+	stream = stream.substring(0, stream.length()-2);
+	// what if they're not of equal size? should return false?
+	return `valS(stream);
+}
+
+public static Pred evalPred(Map<String, ArrayList> env, Pred p) {
+	%match (p){
+			valS(x) -> {return `valS(x);}
+			D(s) -> {
+				String d = getDataName(getUnfold(`s));
+				String t = getTimeName(getUnfold(`s));
+				ArrayList<String> dVals = env.get(d);
+				ArrayList<Integer> tVals = env.get(t);
+				// return false if tVals is not a well-def time seq
+				if(dVals!=null && tVals!=null)
+				if (! wellFormedTimeSeq(tVals)) return `False();
+				else { return formInstStream(dVals, tVals); }
+			}	
+			andL(p1*, eqD(dId(d1), dId(d2)), p2*) -> {
+				ArrayList<String> d1Vals = env.get((String)`d1);
+				ArrayList<String> d2Vals = env.get((String)`d2);
+				// if either one of t1Vals is not instantiated in the env then update env
+				if(d1Vals == null && d2Vals != null) {
+					//System.out.println("evalPred: eqD d1= "+ `d1 + " is null and d2 isn't = " + `d2);
+					d1Vals = (ArrayList<String>)d2Vals.clone();
+					env.put(`d1, d1Vals);					
+				}
+				if(d2Vals == null && d1Vals != null) {
+					//System.out.println("evalPred: eqD d1= "+ `d1 + " is nonnull and d2 is null = " + `d2);
+					d2Vals = (ArrayList<String>)d1Vals.clone();
+					env.put(`d2, d2Vals);
+				}
+				return evalPred(env, `andL(p1*, p2*));
+			}					
+			andL(p1*, eqT(tId(t1), tId(t2)), p2*) -> {
+				ArrayList<Integer> t1Vals = env.get((String)`t1);
+				ArrayList<Integer> t2Vals = env.get((String)`t2);
+				// only if both t1Vals and t2Vals are instantiated in env then return true of false ... 			
+				if(t1Vals != null && t2Vals != null) {
+				//System.out.println("evalPred: non-null eqT t1= "+ `t1 + " and t2 = " + `t2);	
+				Iterator it1 = t1Vals.iterator();
+				Iterator it2 = t2Vals.iterator();
+				while(it1.hasNext() && it2.hasNext()) {				
+					if(it1.next() != it2.next()) {
+						//System.out.println("eval eq for time t1 = " + `t1 + " and t2 " + `t2 + " returns false"); 
+						return `False();}
+				}
+				if(!it1.hasNext() && !it1.hasNext()) return `True(); else return `False(); }
+				// if either one of t1Vals is not instantiated in the env then update env
+				if(t2Vals == null && t1Vals != null) {
+					//System.out.println("evalPred: eqT t1= "+ `t1 + " is null and t2 isn't = " + `t2);
+					t2Vals = (ArrayList<Integer>)t1Vals.clone();
+					env.put(`t2, t2Vals);
+				}
+				if(t1Vals == null && t2Vals != null) {
+					//System.out.println("evalPred: eqT t1= "+ `t1 + " is nonnull and t2 is null = " + `t2);
+					t1Vals = (ArrayList<Integer>)t2Vals.clone();
+					env.put(`t1, t1Vals);
+				}
+				return evalPred(env, `andL(p1*, p2*));
+
+			}
+			eqL(t1, t2) -> {
+				ArrayList<Integer> t1Vals = env.get((String)`t1);
+				ArrayList<Integer> t2Vals = env.get((String)`t2);
+				// return true of false ... 			
+				Iterator it1 = t1Vals.iterator();
+				Iterator it2 = t2Vals.iterator();
+				while(it1.hasNext() && it2.hasNext()) {				
+					if(it1.next() != it2.next()) {
+						//System.out.println("eval eq for time t1 = " + `t1 + " and t2 " + `t2 + " returns false"); 
+						return `False();}
+				}
+				if(!it1.hasNext() && !it1.hasNext()) return `True(); else return `False();
+			}
+			eqL(t1, t2, t*) -> {
+				Pred p1 = evalPred(env, `eqL(t1, t2));
+				Pred p2 = evalPred(env, `eqL(t*));
+				return `andL(p1, p2); }
+			andL(x) -> {return evalPred(env, `x);}
+			andL(x, l*) -> { 
+				//System.out.println("eval: andL(x, l*) = " + pretty(`x) + pretty(`l*) + "\n\n"); 
+				return `andL(evalPred(env, x), evalPred(env, l*)) ;}
+			merged(sa, sb, sc) -> {
+				String da = getDataName(getUnfold(`sa));
+				String ta = getTimeName(getUnfold(`sa));
+				String db = getDataName(getUnfold(`sb));
+				String tb = getTimeName(getUnfold(`sb));
+				//System.out.println("eval: merged da = " + da + " with db =" + db + "\n\n");
+				//System.out.println("eval: merged ta = " + ta + " with tb =" + tb + "\n\n");
+				ArrayList<String> daValues = env.get(da);
+				ArrayList<Integer> taValues = env.get(ta);
+				//System.out.println("eval: merged taValues0 = " + taValues.get(0) + "\n\n");
+				
+				if (taValues != null && daValues != null) {					
+					ArrayList<String> dbValues = env.get(db);
+					ArrayList<Integer> tbValues = env.get(tb);
+					//System.out.println("eval: merged tbValues0 = " + tbValues.get(0) + "\n\n");
+					
+					if (tbValues != null && dbValues != null) {
+						String dc = getDataName(getUnfold(`sc));
+						String tc = getTimeName(getUnfold(`sc));
+						ArrayList<Integer> taValuesAux = (ArrayList<Integer>)taValues.clone();
+						ArrayList<String> daValuesAux = (ArrayList<String>)daValues.clone();
+						ArrayList<Integer> tbValuesAux = (ArrayList<Integer>)tbValues.clone();
+						ArrayList<String> dbValuesAux = (ArrayList<String>)dbValues.clone(); 	
+						
+						ArrayList<Integer> tcValues = new ArrayList<Integer>();
+						ArrayList<String> dcValues = new ArrayList<String>();
+						
+						while(!taValues.isEmpty() && !tbValues.isEmpty()) {
+						//while(taValues.size() > 0 && tbValues.size() > 0) {
+							//System.out.println("eval: merged tbValues0 = " + tbValues.get(0) + "\n\n");
+							if ((Integer)taValues.get(0) < (Integer)tbValues.get(0)) { 
+								dcValues.add((String)daValues.get(0)); 
+								tcValues.add((Integer)taValues.get(0)); 
+								daValues.remove(0); 
+								taValues.remove(0); }
+							else {
+									dcValues.add((String)dbValues.get(0)); 
+									tcValues.add((Integer)tbValues.get(0)); 
+									dbValues.remove(0); 
+									tbValues.remove(0);
+								}								
+						}
+						//System.out.println("eval: merged tcValues0 = " + tcValues.get(0) + "\n\n");
+						if(taValues.isEmpty()) {
+							while(!tbValues.isEmpty()) {
+								dcValues.add((String)dbValues.get(0));
+								dbValues.remove(0);
+								tcValues.add((Integer)tbValues.get(0));
+								tbValues.remove(0); }
+						}
+						if(tbValues.isEmpty()) {
+							while(!taValues.isEmpty()) {
+								dcValues.add((String)daValues.get(0));
+								daValues.remove(0);
+								tcValues.add((Integer)taValues.get(0));
+								taValues.remove(0); }
+						}	
+						//System.out.println("eval: merged dc has as first elem " + dcValues.get(0) + "\n\n");
+						env.put(da, daValuesAux);
+						env.put(ta, taValuesAux);
+						env.put(db, dbValuesAux);
+						env.put(tb, tbValuesAux);
+						env.put(dc, dcValues);						
+						env.put(tc, tcValues);
+						//System.out.println("eval: merged tc from env has as first elem " + env.get(tc).get(0) + "\n\n");
+						//return `merged(comp(dId(da), tId(ta)), comp(dId(db), tId(tb)), sc); 
+						return formInstStream(dcValues, tcValues);
+							
+					}else { System.out.println("eval: merged: tbValues or dbValues is null. Error!"); }					 
+			 }else { System.out.println("eval: merged: taValues or daValues is null. Error!"); }
+			}//match merged
+}//match
+//return `True();
+return p;
+}
+
+public static CSpec evalSpec(Map<String, ArrayList> env, CSpec spec) {
+%match (spec){
+			spec(pre(p), post) && andL(_*, False(), _*) << getAndL(evalPred(env, p)) -> { return `spec(pre(False()), post); }
+			spec(pre(p), post(q)) && evalPre@andL(_*, !False(), _*) << getAndL(evalPred(env, p)) -> {
+				//System.out.println("evalSpec: evalPre = " + `evalPre + "\n");
+				return `spec(pre(evalPre), post(evalPred(env, getAndL(q)))); }
+			spec(pre(p), post(q)) -> {
+				//System.out.println("evalSpec: post = " + `q + "\n");
+				return `spec(pre(evalPred(env, p)), post(evalPred(env, getAndL(q)))); }
+}
+System.out.println("evalSpec: no match for spec = " + spec + "\n");
+return spec;
+}
+
+public static String getName(Node n) {
+	%match(n) { node(name,_) -> { return `name; } }
+return null;
+}
+
+public static String generate(String type, String s) {return type + s;}
+
+public static String getNodeType(Node n) {
+	%match(n) { 
+	 source(_) -> { return "source";} 
+	 sink(_) -> { return "sink";} 
+}
+return "dontKnow";
+}
+
+public static Boolean equalsS(Pred p1, Pred p2) {
+	%match(p1, p2) {
+		eqL(), eqL(_) -> { return false; }
+		eqL(_), eqL() -> { return false; }
+		eqL(t), eqL(t) -> { return true; }
+		eqL(t), eqL(!t) -> { return false; }
+		eqL(p11*, t, p12*), eqL(p21*, t, p22*) -> { return equalsS(`eqL(p11*, p12*), `eqL(p21*, p22*)); } 
+}
+return false;
+}
+
+// this function returns true if 
+// na is the name of a source (type = source) and there's a sink in cl with the same name
+// or na is the name of a sink and there's a source in cl with the same name
+public static Boolean hidden(String type, String na, ConnectorList cl) {
+	%match(cl) {	
+		connectorList(_*, c, _*) && connector(R(ins(_*, node(name, _),_*), _),_) << getNormalised(c) -> {if (type == "sink") if (na.equals(`name)) return true;} 	  
+		connectorList(_*, c, _*) && connector(R(_, outs(_*, node(name, _),_*)),_) << getNormalised(c) -> {if (type == "source") if (na.equals(`name)) return true;}
+  	  } 
+	return false;
+}
+
+//this function returns true if n is not a name of a stream or of a data from a stream on the nodes from the config of c
+public static Boolean localName(String n, Connector c) {
+	%match(c) {	
+		connector(R(ins(_*, node(_, s), _*), _), _) -> {
+			//System.out.println("local name ins n has between at index " + n.indexOf("between"));
+			StreamId s2 = getUnfold(`s);
+			String s3 = stream2String(`s);
+			//System.out.println("localName ins s2 = " + s2);
+			if ( (n.equals(s3)) || n.equals(s2) || n.equals(getDataName(s2)) 
+			|| n.equals(getTimeName(s2) ) 			
+			|| (n.indexOf("between") > -1)) 
+			return false;}
+		//connector(R(_, outs(_*, node(_, sId(n1)), _*)), _) -> {
+		connector(R(_, outs(_*, node(_, s), _*)), _) -> {
+		StreamId s2 = getUnfold(`s);
+		String s3 = stream2String(`s);	
+		//System.out.println("local name outs n has between at index " + n.indexOf("between"));
+		if ( (n.equals(s3)) || n.equals(s2) || n.equals(getDataName(s2)) 
+		|| n.equals(getTimeName(s2)) 
+		|| (n.indexOf("between") > -1) ) return false;}
+  	  } 
+	//System.out.println("local name n = " + n + " is local in c = " + pretty(c));
+	/*connector(R(ins(_*, node(_, sId(n)), _*), _), _) -> { return false; }
+	connector(R(ins(_*, node(_, comp(dId(n), _), _*), _), _) -> { return false; }
+	connector(R(ins(_*, node(_, comp(_, tId(n)), _*), _), _) -> { return false; }
+	connector(R(ins(_*, node(_, comp(_, between2(tId(n))), _*), _), _) -> { return false; }*/
+	return true;
+}
+
+public static Pred getPre(CSpec spec) {
+	%match(spec) { spec(pre(p),_) -> { return `p; } }
+return null;
+}
+
+public static Pred getPost(CSpec spec) {
+	%match(spec) { spec(_,post(p)) -> { return `p; } }
+return null;
+}
+
+public static CSpec getSpec(Connector c) {
+	%match(c) { 
+		connector(_, spec) -> { return `spec; }
+		channel(t, (source|sink)(node(_, sa)), (source|sink)(node(_, sb))) -> 
+			{ return `constraint(t, sa, sb); }
+}
+return null;
+}
+
+public static DataId getDataId(StreamId s) {
+	%match(s) {
+			comp(dId, _) -> { return `dId; }
+		}
+	return null;
+	}
+
+public static TimeId getTimeId(StreamId s) {
+	%match(s) {
+			comp(_, tId) -> { return `tId; }
+		}
+	return null;
+	}
+
+public static String getTimeName(StreamId s) {
+	%match(s) {
+			comp(_, tId(x)) -> { return `x; }
+		}
+	return null;
+	}
+
+public static String getDataName(StreamId s) {
+	%match(s) {
+			comp(dId(x),_) -> { return `x; }
+		}
+	return null;
+	}
+
+public static StreamId getStreamIdfromDataId(DataId d) {
+	%match(d) {
+			dId(concString('d', x*)) -> { return `sId("s" + x*); }
+		}
+	return null;
+	}
+
+public static StreamId getStreamIdfromTimeId(TimeId t) {
+	%match(t) {
+			tId(concString('t', x*)) -> { return `sId("s" + x*); }
+		}
+	return null;
+	}
+
+public static String stream2String(StreamId s) {
+	%match(s) {
+			sId(str) -> { return `str; }
+			comp(_,_) -> { return stream2String(getFold(s)); }
+		}
+	return null;
+	}
+
+public static StreamId getFold(StreamId s) {
+	%match(s) {
+			comp(dId(concString(_,x*)), tId(concString(_,x*))) -> { return `sId("s" + x*); }
+		}
+	return s;
+	}
+
+public static StreamId getUnfold(StreamId s) {
+	%match(s) {
+			sId(concString(_,x*)) -> { return `comp(dId("d" + x*), tId("t" + x*)); }
+		}
+	return s;
+	} 
+
+//this function tries to find out the corresponding stream from the source connected to a sink
+//should be used in Merge for finding \beta1, \beta2   
+public static StreamId getStreamPair(Connector c, StreamId sb) {
+	%match(c) {
+		connector(R(ins(_*, node(_, sa), _*), outs(_*, node(_, sb),_*)), constraint(_, sa, sb)) -> { 
+		System.out.println("getPair the pair for the stream " + pretty(sb) + " in the connector " + pretty(c) + " is " + pretty(`sa) + "\n\n\n");
+		return `sa; }
+	}
+System.out.println("getPair[error]: cannot find a corresponding pair for the stream " + pretty(sb) + " in the connector " + pretty(c));	
+return null;
+}
+    
+public static String removeDuplic(String s) {
+%match (s){ 
+	concString(s1*, 'D< s', x, ' >', s2*, 'D< s', x, ' > and ', s3*) -> { 
+		String sRes = `s1* + "D< s" + `x* + " >" + `s2* + `s3*; 
+		System.out.println("removeDuplic of " + s + " is " + sRes); 
+		return sRes; } 
+	}
+return s;
+}
+
+public static Pred formulaFromFlatten(String s) {
+	%match (s){
+	concString('D< ', x*, ' >') -> { return `D(sId(x*)); }
+	concString('between(', x*, ', ', y*, ')') -> { return `between(tId(x*), tId(y*)); }
+	//concString(x*, ' /\\ ', y*) -> { return `and(formulaFromFlatten(x*), formulaFromFlatten(y*)); }
+	concString(x*, ' and ', y*) -> { return `and(formulaFromFlatten(x*), formulaFromFlatten(y*)); }
+	concString('~ ', x*) -> { return `neg(formulaFromFlatten(x*));}
+ 	concString('merged(', x*, ', ', y*, ', ', z*, ')') -> { return `merged(sId(x*), sId(y*), sId(z*)); }
+ 	concString(x*, ' = ', y*) -> { return `eq(sId(x*), sId(y*)); }		
+	concString(x*, ' =d ', y*) -> { return `eqD(dId(x*), dId(y*)); }
+	concString(x*, ' =t ', y*) -> { return `eqT(tId(x*), tId(y*)); }	
+	}
+	return `D(sId("fooledyou"));
+}
+
+public static void printEnv(Map<String, ArrayList> env) {
+	Set set = env.entrySet();
+    Iterator it = set.iterator();
+    System.out.println("printEnv:");
+    System.out.println("------------------------------------------------------------");
+    while(it.hasNext()){
+      Map.Entry me = (Map.Entry)it.next();
+      System.out.println(me.getKey() + " : " + me.getValue() ); }
+    System.out.println("------------------------------------------------------------");
+}
+
+public static Connector getConnector(ConnectorList cl) {
+%match(ConnectorList cl) {
+	connectorList(connector(cf, cs)) -> {return `connector(cf, cs);}
+	}
+	return null; 
+}
+
+public static Connector getNormalised(Connector c) {
+	try{
+		Connector c1 = `Sequence(Normalise(),BottomUp(Fold())).visitLight(c);
+		//System.out.println("getNormalised of c = " + c + " is " + c1);
+		return c1;
+		} catch (VisitFailure e) {
+			System.out.println("getNormalised: strategy failed");
+		}
+	//System.out.println("getNormalised: strategy failed");	
+	return null;
+}
+
+public static Pred getAndL(Pred p) {
+	try{
+		Pred p1 = `Repeat(And2AndL()).visitLight(p);
+		//System.out.println("getAndL of p = " + p + " is " + p1);
+		return p1;
+		} catch (VisitFailure e) {
+			System.out.println("getAndL: strategy failed");
+		}
+	return null;
+}
+
+public static Pred getEqL(Pred p) {
+	try{
+		Pred p1 = `Repeat(GatherEquals()).visitLight(p);
+		//System.out.println("getAndL of p = " + p + " is " + p1);
+		return p1;
+		} catch (VisitFailure e) {
+			System.out.println("getEqL: strategy failed");
+		}
+	return null;
+}
+
+public static String pretty(Object o) {
+	%match(TimeId o) {
+      tId(name) -> { return `name; }
+      }
+	%match(DataId o) {
+      dId(name) -> { return `name; }
+      }
+    %match(StreamId o) {
+      sId(name) -> { return `name; }
+      comp(d, t) -> { return "comp(" + pretty(`d) + "," + pretty(`t) +")"; }
+      }
+    %match(Pred o){
+	  and(p, q) -> { return pretty(`p) + " and " + pretty(`q); }
+	  implic(p, q) -> { return " ( " + pretty(`p) + " => " + pretty(`q) + " ) "; }
+	  andL(p) -> { return pretty(`p); }
+	  andL(p, l*) -> { return pretty(`p) + " and " + pretty(`andL(l*)); }
+      eq(s1,s2) -> { return pretty(`s1) + " = " + pretty(`s2); }
+      eqD(d1,d2) -> { return pretty(`d1) + " =d " + pretty(`d2); }
+      eqT(t1,t2) -> { return pretty(`t1) + " =t " + pretty(`t2); }
+      between(t1,t2) -> { return "between(" + pretty(`t1) + ", " + pretty(`t2) + ")"; }      
+      exists(p, q) -> { return "E(" + pretty(`p) + ", " + pretty(`q) + ")"; }
+      merged(s1, s2, s3) -> { return "merged(" + pretty(`s1) + ", " + pretty(`s2) + ", " + pretty(`s3) +  ")"; }
+      neg(p) -> {return "~ " + pretty(`p);}
+      D(sId) -> {return "D< " + pretty(`sId) + " >";}       
+     }
+    %match(Pre o) {
+      pre(p) -> { return pretty(`p); }
+    }
+    %match(Post o) {
+      post(q) -> { return pretty(`q); }
+    }
+    %match(CSpec o) {
+     spec(p, q) -> { return pretty(`p) + " |- " + pretty(`q); }
+     constraint(t, sa, sb) -> { return "constraint(" + `t + ", " + pretty(`sa) + ", " + pretty(`sb) + ")"; }
+     }
+    %match (Node o){
+	 node(name, sid) -> { return "( " + `name + " , " + pretty(`sid) + " )"; }
+}
+    %match(Ins o) {
+     ins(n) -> {return pretty(`n); }	
+     ins(n, ns*) -> {return pretty(`n) + ", " + pretty(`ins(ns*)); }      	
+    }
+    %match(Outs o) {
+     outs(n) -> {return pretty(`n); }
+     outs(n, ns*) -> {return pretty(`n) + ", " + pretty(`outs(ns*)); }      	
+    }
+    
+    %match(Connector o) {
+     channel(sync(), source(n1), sink(n2)) -> { return "sync(source(" + pretty(`n1) + "), sink(" + pretty(`n2) + ")";}
+     channel(fifo(), source(n1), sink(n2)) -> { return "fifo(source(" + pretty(`n1) + "), sink(" + pretty(`n2) + ")";}	
+     connector(R(i1, o1),spec) -> { return "R(" + pretty(`i1) + " : " + pretty(`o1) + ") , " + pretty(`spec); }
+    }
+    %match(ConnectorList o) {
+     connectorList(c) -> { return pretty(`c); }
+     connectorList(c,cl*) -> { return "[ " + pretty(`c) + ", " + pretty(`connectorList(cl*)) + " ]"; }
+     connectorTree(c) -> { return pretty(`c); }
+     connectorTree(c,cl*) -> { return "[ " + pretty(`c) + ", " + pretty(`connectorTree(cl*)) + " ]"; }
+    }
+    return o.toString();
+  }
+
+/* 
+** STRATEGIES
+*/
+
+%strategy Fold() extends `Identity() {
+	visit StreamId {
+		comp(dId(concString('d',x*)), tId(concString('t',x*))) -> { return `sId(generate("s", x*)); }
+	}
+}
+
+%strategy Unfold() extends `Identity() {
+	visit StreamId {			
+		sId(concString(_,x*)) -> { return `comp(dId(generate("d", x*)), tId(generate("t", x*))); }
+	}
+} 
+
+// renames n1 with n2
+%strategy Rename(n1:String,n2:String) extends Identity(){ 
+  	visit StreamId {
+  	  sId(n) -> { if(`n==n1) return `sId(n2); } 
+  	  }
+  	visit TimeId {
+  	  tId(n) -> { 
+  		  if(`n==n1) return `tId(n2); 
+  		  if(`n.equals("between2("+n1+")")) return `tId("between2(" + n2 + ")"); 
+  	  	}
+  	  }
+  	visit DataId{
+  	  dId(n) -> { if(`n==n1) return `dId(n2); }
+ 	 } 
+	}
+
+%strategy EvalConstraints() extends Identity(){ 
+  	visit CSpec {
+ 		constraint(sync(), sa, sb) && comp(da, ta) << getUnfold(sa) && comp(db, tb) << getUnfold(sb) -> { 
+ 			return `spec(pre(D(comp(da, ta))), post(andL(D(comp(db, tb)), eqT(ta, tb), eqD(da, db)))); }
+ 		constraint(lossySync(), sa, sb) && comp(da, ta) << getUnfold(sa) && comp(db, tb) << getUnfold(sb) -> { 
+ 			return `spec(pre(D(comp(da, ta))), post(andL(D(comp(db, tb)), L(comp(da, ta), comp(db, tb))))); } 	    	   
+ 		constraint(fifo(), sa, sb) && comp(da, tId(taS)) << getUnfold(sa) && comp(db, tb) << getUnfold(sb) -> { 
+ 			return `spec(pre(D(comp(da, tId(taS)))), post(and(and(D(comp(db, tb)), eqD(da, db)), eqT(tb, tId("between2(" + taS + ")"))))); }
+ 		constraint(syncDrain(), sa, sb) && comp(da, ta) << getUnfold(sa) && comp(db, tb) << getUnfold(sb) -> { 
+ 			return `spec(pre(and(and(D(comp(da, ta)), D(comp(db, tb))), eqT(ta, tb))), post(True())); }
+ 	 } 
+}
+
+ //andL(and(D(sId("sa")),D(sId("sb"))),eqD(dId("da"),dId("db")),and(D(sId("sa")),D(sId("sb"))))
+%strategy And2AndL() extends Fail(){ 
+  	visit Pred {  	  
+  	  and(and(p, q), r) -> { 
+  		  //System.out.println("And2AndL case 1"); 
+  		  return `andL(p, q, r);} 
+  	  and(r, and(p, q)) -> { 
+  		  //System.out.println("And2AndL case 2"); 
+  		  return `andL(p, q, r);}
+  	  and(andL(l*), r) -> { 
+  		  //System.out.println("And2AndL case 3"); 
+  		  return `andL(l*, r);}    	  
+  	  and(l, andL(r*)) -> { 
+  		  //System.out.println("And2AndL case 4"); 
+  		  return `andL(l, r*);}
+  	  andL(r1*, and(p,q), r2*) -> { 
+  		  //System.out.println("And2AndL case 5"); 
+  		  return `andL(r1*, p, q, r2*);}
+  	 and(p, q) -> {return `andL(p, q); }
+ 	 }
+ 
+}
+//make a strat for transforming a formula in cnf (or add rules to stream.gom)
+
+%strategy DeleteDuplic() extends Fail() {
+	 visit Pred {
+		 andL(p1*, p, p2*, p, p3*) -> { 
+			 //System.out.println("Delete duplic of " + `p); 
+			 return `andL(p1*, p, p2*, p3*); }
+		}  
+	visit Connector {
+		connector(R(ins(l1*, n, l2*, n, l3*), o), spec) -> {return `connector(R(ins(l1*, n, l2*, l3*), o), spec);}
+		connector(R(i, outs(l1*, n, l2*, n, l3*)), spec) -> {return `connector(R(i, outs(l1*, n, l2*, l3*)), spec);}
+		//connector(R(i, o), spec()) -> {return `connector(R(ins(l1*, n, l2*, l3*), o), spec);}
+		}
+}
+
+}

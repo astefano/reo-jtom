@@ -1,0 +1,14 @@
+Buildfile: build.xml
+
+tom.init:
+
+init:
+
+build:
+[tom.preset] Compiling 1 source file to /home/popart/astefano/Downloads/tom-2.8rc2/examples/gen
+[javac.preset] Compiling 1 source file to /home/popart/astefano/Downloads/tom-2.8rc2/examples/build
+[javac.preset] Note: /home/popart/astefano/Downloads/tom-2.8rc2/examples/gen/reospec/TestConnector.java uses unchecked or unsafe operations.
+[javac.preset] Note: Recompile with -Xlint:unchecked for details.
+
+BUILD SUCCESSFUL
+Total time: 13 seconds
